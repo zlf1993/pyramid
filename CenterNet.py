@@ -241,7 +241,6 @@ class CenterNet:
         s_32 = yolo_conv2d(s_32, 256, 3, 1)  # 16 /32
 
         s_32 = self._dconv_bn_activation(s_32, 256, 4, 2)  # 32 /16
-        # s_32 = upsample_layer(s_32, out_shape=32)
         concat1 = tf.concat([s_32, s_16], axis=3)
         s_16 = Conv2D(256, (1, 1), padding='same', use_bias=False)(concat1)
         s_16 = BatchNormalization(epsilon=1e-5)(s_16)
@@ -269,15 +268,11 @@ class CenterNet:
         s_4 = self._SepConv_BN(s_4, 128, 's4_dp2', point_activation=True, epsilon=1e-5)
         s_4 = self._SepConv_BN(s_4, 128, 's4_dp3', point_activation=True, epsilon=1e-5)
 
-        size = self._SepConv_BN(s_4, 256, 'size_depth_point_1', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 256, 'size_depth_point_2', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 256, 'size_depth_point_3', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 256, 'size_depth_point_4', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 256, 'size_depth_point_5', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 256, 'size_depth_point_6', point_activation=True, epsilon=1e-5)
-        # size = self._SepConv_BN(size, 256, 'size_depth_point_7', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 4, 'size', point_bn=False, point_activation=False, epsilon=1e-5)
-        size = tf.exp(size)
+        conv1 = self._conv_bn_activation(s_4, 256, 3, 1)
+        conv2 = self._conv_bn_activation(conv1, 256, 3, 1)
+        conv3 = self._conv_bn_activation(conv2, 256, 3, 1)
+        conv4 = self._conv_bn_activation(conv3, 256, 3, 1)
+        size = self._conv_activation(conv4, 4, 3, 1, activation=tf.exp)
 
         # center and seg
         center = self._SepConv_BN(s_4, 128, 'cent_depth_point_1', point_activation=True, epsilon=1e-5)
