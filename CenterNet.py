@@ -193,10 +193,10 @@ class CenterNet:
     def _define_inputs(self):
         # model inputs: [images, ground_truth, mask_ground_truth]
         shape = self.data_shape
-        self.images = tf.keras.Input(shape=shape, dtype=tf.float32)
+        self.images = tf.keras.Input(shape=[512, 512, 3], dtype=tf.float32)
 
         if self.mode == 'train':
-            gt_shape = [self.image_size/int(self.stride), self.image_size/int(self.stride), self.gt_channel]
+            gt_shape = [self.image_size//int(self.stride), self.image_size//int(self.stride), self.gt_channel]
             self.ground_truth = tf.keras.Input(shape=gt_shape, dtype=tf.float32)
 
     def _build_backbone(self, x):
@@ -223,7 +223,8 @@ class CenterNet:
         x = BottleNeck(in_size=160, exp_size=960, out_size=160, s=1, is_se_existing=True, NL="HS", k=5)(x)
         x = BottleNeck(in_size=160, exp_size=960, out_size=160, s=1, is_se_existing=True, NL="HS", k=5)(x)
         x = Conv2D(filters=960, kernel_size=(1, 1), strides=1, padding="same")(x)
-        s_32 = BatchNormalization(epsilon=1e-5)(x)
+        x = BatchNormalization(epsilon=1e-5)(x)
+        s_32 = Activation('relu')(x)
 
         # for s_8
         # x = BottleNeck(in_size=40, exp_size=240, out_size=80, s=1, is_se_existing=False, NL="HS", k=3)(s_8)  # 32
@@ -240,6 +241,7 @@ class CenterNet:
         s_32 = yolo_conv2d(s_32, 256, 3, 1)  # 16 /32
 
         s_32 = self._dconv_bn_activation(s_32, 256, 4, 2)  # 32 /16
+        # s_32 = upsample_layer(s_32, out_shape=32)
         concat1 = tf.concat([s_32, s_16], axis=3)
         s_16 = Conv2D(256, (1, 1), padding='same', use_bias=False)(concat1)
         s_16 = BatchNormalization(epsilon=1e-5)(s_16)
@@ -267,10 +269,13 @@ class CenterNet:
         s_4 = self._SepConv_BN(s_4, 128, 's4_dp2', point_activation=True, epsilon=1e-5)
         s_4 = self._SepConv_BN(s_4, 128, 's4_dp3', point_activation=True, epsilon=1e-5)
 
-        size = self._SepConv_BN(s_4, 128, 'size_depth_point_1', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 128, 'size_depth_point_2', point_activation=True, epsilon=1e-5)
-        size = self._SepConv_BN(size, 128, 'size_depth_point_3', point_activation=True, epsilon=1e-5)
-        # center = self._SepConv_BN(center, 128, 'size_depth_point_4', point_activation=True, epsilon=1e-5)
+        size = self._SepConv_BN(s_4, 256, 'size_depth_point_1', point_activation=True, epsilon=1e-5)
+        size = self._SepConv_BN(size, 256, 'size_depth_point_2', point_activation=True, epsilon=1e-5)
+        size = self._SepConv_BN(size, 256, 'size_depth_point_3', point_activation=True, epsilon=1e-5)
+        size = self._SepConv_BN(size, 256, 'size_depth_point_4', point_activation=True, epsilon=1e-5)
+        size = self._SepConv_BN(size, 256, 'size_depth_point_5', point_activation=True, epsilon=1e-5)
+        size = self._SepConv_BN(size, 256, 'size_depth_point_6', point_activation=True, epsilon=1e-5)
+        # size = self._SepConv_BN(size, 256, 'size_depth_point_7', point_activation=True, epsilon=1e-5)
         size = self._SepConv_BN(size, 4, 'size', point_bn=False, point_activation=False, epsilon=1e-5)
         size = tf.exp(size)
 
@@ -278,14 +283,17 @@ class CenterNet:
         center = self._SepConv_BN(s_4, 128, 'cent_depth_point_1', point_activation=True, epsilon=1e-5)
         center = self._SepConv_BN(center, 128, 'cent_depth_point_2', point_activation=True, epsilon=1e-5)
         center = self._SepConv_BN(center, 128, 'cent_depth_point_3', point_activation=True, epsilon=1e-5)
-        # center = self._SepConv_BN(center, 128, 'cent_depth_point_4', point_activation=True, epsilon=1e-5)
+        center = self._SepConv_BN(center, 128, 'cent_depth_point_4', point_activation=True, epsilon=1e-5)
+        center = self._SepConv_BN(center, 128, 'cent_depth_point_5', point_activation=True, epsilon=1e-5)
         center = self._SepConv_BN(center, self.num_classes, 'cent', point_bn=False, point_activation=False, epsilon=1e-5)
 
-        seg = self._SepConv_BN(s_4, 128, 'fpn_depth_point_1', point_activation=True, epsilon=1e-5)
-        seg = self._SepConv_BN(seg, 128, 'fpn_depth_point_2', point_activation=True, epsilon=1e-5)
-        seg = self._SepConv_BN(seg, 128, 'fpn_depth_point_3', point_activation=True, epsilon=1e-5)
-        # seg = self._SepConv_BN(seg, 128, 'fpn_depth_point_4', point_activation=True, epsilon=1e-5)
-        seg = self._SepConv_BN(seg, self.num_classes, 'fpn', point_bn=False, depth_activation=False, epsilon=1e-5)
+        seg = self._SepConv_BN(s_4, 256, 'decoder_conv0', depth_activation=False, point_activation=True, epsilon=1e-5)
+        seg = self._SepConv_BN(seg, 256, 'decoder_conv1', depth_activation=False, point_activation=True, epsilon=1e-5)
+        seg = self._SepConv_BN(seg, 256, 'decoder_conv2', depth_activation=False, point_activation=True, epsilon=1e-5)
+        seg = self._SepConv_BN(seg, 256, 'decoder_conv3', depth_activation=False, point_activation=True, epsilon=1e-5)
+        seg = self._SepConv_BN(seg, 256, 'decoder_conv4', depth_activation=False, point_activation=True, epsilon=1e-5)
+        seg = self._SepConv_BN(seg, self.num_classes, 'seg_depth_point_3', depth_activation=False, point_bn=False,
+                               point_activation=False, epsilon=1e-5)
 
         return center, size, seg
 
